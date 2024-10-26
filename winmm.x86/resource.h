@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
-// Used by HiJack64.rc
+// Used by winmm.rc
 //
 #define NS_CHINAPYG_521                 321
 
