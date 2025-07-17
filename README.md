@@ -1,56 +1,54 @@
 # winmm.dll hijack & DLL Injection & Hook
 
-劫持`winmm.dll`，并注入指定的dll。
+Hijack `winmm.dll` and inject a specified DLL.
 
-待劫持目标exe的导入表`IAT（Import Address Table）`中必须有`winmm.dll`，才能劫持成功。
+The target exe to be hijacked must have `winmm.dll` in its Import Address Table (IAT) for the hijack to succeed.
 
-> 检测目标exe的位数和`IAT`，使用：[Detect it easy](https://github.com/horsicq/Detect-It-Easy)
-
+> To check the target exe's architecture and IAT, use: [Detect it easy](https://github.com/horsicq/Detect-It-Easy)
 
 ## Build
 
-编译项目Release，会生两个文件，分别为
+Build the project in Release mode to generate two files:
 - winmm.x86.dll
 - winmm.x64.dll
 
-
 ## Usage
 
-1. 假设目标exe是x86的，就修改`winmm.x86.dll`为`winmm.dll`，放入该程序的目录下
-2. 待注入的dll命名需要为`winmm.xxx.dll`，放入同目录。
+1. If the target exe is x86, rename `winmm.x86.dll` to `winmm.dll` and place it in the program's directory.
+2. The DLLs to be injected should be named as `winmm.xxx.dll` and placed in the same directory.
 
-    支持多个dll，例如：
+    Multiple DLLs are supported, for example:
 
     ```
     winmm.core.dll
     winmm.module.dll
     ```
-3. 加载顺序是简单的字典顺序，比如`winmm.a.dll` 优先于 `winmm.b.dll`
 
-4. 是否加载成功，使用[DebugView](https://learn.microsoft.com/en-us/sysinternals/downloads/debugview)查看
+3. The loading order is simple lexicographical order, e.g., `winmm.a.dll` loads before `winmm.b.dll`.
 
-    输出如下，表示`winmm.core.dll`注入成功
+4. To check if the DLLs loaded successfully, use [DebugView](https://learn.microsoft.com/en-us/sysinternals/downloads/debugview).
+
+    The following output indicates that `winmm.core.dll` was injected successfully:
     ```
     Injected dll: winmm.core.dll
     ```
 
 ## Development
 
-1. 可以使用[Baymax Patch Tools](https://www.chinapyg.com/thread-83083-1-1.html)、[AHeadLibEx](https://github.com/i1tao/AheadLibEx)生成的劫持的源码
-  
-    比如系统DLL：`winhttp.dll`、`version.dll`。
+1. You can use [Baymax Patch Tools](https://www.chinapyg.com/thread-83083-1-1.html) or [AHeadLibEx](https://github.com/i1tao/AheadLibEx) to generate hijack source code.
 
+    For example, for system DLLs like `winhttp.dll` or `version.dll`.
 
-2. 需要分别生成x86和x64的源码，
-    - 系统x64的dll位于：`C:\Windows\System32`
-    - 系统x86的dll位于`C:\Windows\SysWOW64`
+2. You need to generate x86 and x64 source code separately:
+    - System x64 DLLs are in: `C:\Windows\System32`
+    - System x86 DLLs are in: `C:\Windows\SysWOW64`
 
-    - x86的只会生成一个.cpp
-    - x64的会生成.cpp、.asm，导出的函数的代码实际上位于.asm
+    - x86 will generate only a .cpp file
+    - x64 will generate .cpp and .asm files; the exported functions' code is actually in the .asm file
 
-## 导出的方法
+## Exported Methods
 
-winmm.dll中导出了3个简单的hook方法：
+winmm.dll exports 3 simple hook methods:
 
 ```cpp
 long hook(PVOID* originalFunc, PVOID hookFunc);
@@ -58,7 +56,7 @@ long unhook(PVOID* originalFunc, PVOID hookFunc);
 long hookTransaction(HANDLE threadHandle, void (*callback)(void));
 ```
 
-除此之外，还导出了Detours的所有方法：
+In addition, all Detours methods are exported:
 
 ```cpp
 LONG WINAPI DetourTransactionBegin(VOID);
@@ -98,7 +96,6 @@ ULONG WINAPI DetourGetModuleSize(HMODULE hModule);
 HMODULE WINAPI DetourEnumerateModules(HMODULE hModuleLast);
 ULONG WINAPI DetourGetSizeOfPayloads(HMODULE hModule);
 
-
 PVOID WINAPI DetourFindPayload(HMODULE hModule, REFGUID rguid, DWORD *pcbData);
 PVOID WINAPI DetourGetContainingModule(PVOID pvAddr);
 
@@ -106,25 +103,23 @@ BOOL WINAPI DetourEnumerateImports(HMODULE hModule, PVOID pContext, PF_DETOUR_IM
 BOOL WINAPI DetourEnumerateExports(HMODULE hModule, PVOID pContext, PF_DETOUR_ENUMERATE_EXPORT_CALLBACK pfExport);
 ```
 
-## Example: Hook 系统函数
+## Example: Hooking a System Function
 
-比如需要hook `CreateFileW`，则在`winmm.xxx.dll`的`dllmain.cpp`中参考如下：
-
+For example, to hook `CreateFileW`, refer to the following in `dllmain.cpp` of your `winmm.xxx.dll`:
 
 ```cpp
 #include <Windows.h>
 
-// 申明父级winmm.dll的函数
+// Declare parent winmm.dll functions
 #define BindDllMethod(funcPtr, dllHandle, funcName) (funcPtr = (decltype(funcPtr))GetProcAddress(dllHandle, funcName))
 long (*hookTransaction)(HANDLE threadHandle, void (*callback)(void)) = nullptr;
 long (*hook)(PVOID* originalFunc, PVOID hookFunc) = nullptr;
 long (*unhook)(PVOID* originalFunc, PVOID hookFunc) = nullptr;
 
-
-// 原始 CreateFileW 函数的指针
+// Pointer to the original CreateFileW function
 auto RealCreateFileW = CreateFileW;
 
-// 钩子函数
+// Hook function
 static HANDLE WINAPI HookedCreateFileW(
     LPCWSTR lpFileName,
     DWORD dwDesiredAccess,
@@ -135,9 +130,9 @@ static HANDLE WINAPI HookedCreateFileW(
     HANDLE hTemplateFile
 )
 {
-    // 做你想做的事情
+    // Do what you want here
 
-    // 调用原始的 CreateFileW 函数
+    // Call the original CreateFileW function
     HANDLE hFile = RealCreateFileW(
         lpFileName,
         dwDesiredAccess,
@@ -148,7 +143,7 @@ static HANDLE WINAPI HookedCreateFileW(
         hTemplateFile
     );
 
-    // 做你想做的事情
+    // Do what you want here
 
     return hFile;
 }
@@ -162,10 +157,10 @@ BOOL APIENTRY DllMain( HMODULE hModule,
     {
         case DLL_PROCESS_ATTACH: {
             HMODULE hModule = GetModuleHandle("winmm.dll");
-            if (nullptr == hModule) { // 当前dll不是被 winmm.dll 加载的，无法hook
+            if (nullptr == hModule) { // This DLL was not loaded by winmm.dll, cannot hook
                 return;
             }
-            // 绑定
+            // Bind methods
             BindDllMethod(hookTransaction, hModule, "hookTransaction");
             BindDllMethod(hook, hModule, "hook");
             BindDllMethod(unhook, hModule, "unhook");
@@ -176,7 +171,6 @@ BOOL APIENTRY DllMain( HMODULE hModule,
                     // ...
                 });
             }
-            
         } break;
         case DLL_PROCESS_DETACH: {
             if (hookTransaction != nullptr) {
@@ -190,6 +184,6 @@ BOOL APIENTRY DllMain( HMODULE hModule,
     }
 }
 
-#undef BindDllMethod // 避免影响其他模块
+#undef BindDllMethod // Avoid affecting other modules
 
 ```
