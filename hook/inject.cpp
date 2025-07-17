@@ -9,25 +9,30 @@ std::vector<HMODULE> LoadInjectDlls(HMODULE hModule) {
     TCHAR output[2048];
 
     std::filesystem::path dllPath = GetCurrentDllPath(hModule);
+    std::filesystem::path smtDir = dllPath.parent_path() / _T("SMT");
     std::vector<std::filesystem::path> dllList;
 
     std::basic_regex<TCHAR> pattern(_T("^winmm\\..+\\.dll$"));
-    for (const auto& entry : std::filesystem::directory_iterator(dllPath.parent_path())) {
-        if (entry.is_regular_file()){
-            auto filename = entry.path().filename();
-            if (std::regex_match(filename.c_str(), pattern)) {
-                dllList.push_back(entry.path());
+    if (std::filesystem::exists(smtDir) && std::filesystem::is_directory(smtDir)) {
+        for (const auto& entry : std::filesystem::directory_iterator(smtDir)) {
+            if (entry.is_regular_file()){
+                auto filename = entry.path().filename();
+                if (std::regex_match(filename.c_str(), pattern)) {
+                    dllList.push_back(entry.path());
+                }
             }
         }
+    } else {
+        OutputDebugString(_T("SMT Folder does not exist."));
     }
 
     if (dllList.empty()) {
-        // Ã»ÓÐËÑË÷µ½ÎÄ¼þ
+        // Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½
         OutputDebugString(_T("Found nothing for injection"));
         return {};
     }
     
-    // ¶ÔÎÄ¼þÁÐ±í½øÐÐ×ÖµäË³ÐòÅÅÐò
+    // ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½Ð±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     std::sort(dllList.begin(), dllList.end());
 
     _stprintf_s(output, _countof(output), _T("Found %zu dlls for injection."), dllList.size());
@@ -35,7 +40,7 @@ std::vector<HMODULE> LoadInjectDlls(HMODULE hModule) {
 
     std::vector<HMODULE> dllModuleList;
 
-    // LoadLibraryÅÅÐòºóµÄÎÄ¼þÁÐ±í
+    // LoadLibraryï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½Ð±ï¿½
     for (const auto& dllPath : dllList) {
         _stprintf_s(output, _countof(output), _T("Try to load dll: %s"), dllPath.c_str());
         OutputDebugString(output);
