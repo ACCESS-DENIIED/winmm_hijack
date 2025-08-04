@@ -6,23 +6,47 @@
 #include <shellapi.h>
 #include <vector>
 #include <fstream>
+#include <filesystem>
+#include <windows.h> 
+#include <iostream>
 
 std::vector<HMEMORYMODULE> g_InjectDlls;
+static bool g_consoleInitialized = false;
 
-// temp  for testing
+// Safe console initialization that won't conflict with injected DLL
+void InitWinMMConsole() {
+    if (g_consoleInitialized) return;
+    
+    // Only allocate console if one doesn't exist
+    if (!GetConsoleWindow()) {
+        AllocConsole();
+    }
+    
+    // Redirect stdout to console without interfering with injected DLL streams
+    FILE* pCout;
+    freopen_s(&pCout, "CONOUT$", "w", stdout);
+    
+    g_consoleInitialized = true;
+}
+
+void WinMMLog(const std::wstring& message) {
+    InitWinMMConsole();
+    std::wcout << L"[WINMM] " << message << L"\n";
+    std::wcout.flush();
+}
+
+// temp for testing
 std::vector<BYTE> LoadLocalDll(const std::filesystem::path &dllPath) {
     std::vector<BYTE> modBytes;
     
     if (!std::filesystem::exists(dllPath)) {
-        std::wstring errorStr = L"Local DLL not found: " + dllPath.wstring();
-        OutputDebugString(errorStr.c_str());
+        WinMMLog(L"Local DLL not found: " + dllPath.wstring());
         return modBytes;
     }
 
     std::ifstream file(dllPath, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
-        std::wstring errorStr = L"Failed to open local DLL: " + dllPath.wstring();
-        OutputDebugString(errorStr.c_str());
+        WinMMLog(L"Failed to open local DLL");
         return modBytes;
     }
 
@@ -31,16 +55,15 @@ std::vector<BYTE> LoadLocalDll(const std::filesystem::path &dllPath) {
     modBytes.resize(static_cast<size_t>(size));
 
     if (!file.read(reinterpret_cast<char*>(modBytes.data()), size)) {
-        std::wstring errorStr = L"Failed to read local DLL: " + dllPath.wstring();
-        OutputDebugString(errorStr.c_str());
+        WinMMLog(L"Failed to read local DLL");
         return {};
     } 
     else {
-        std::wstring successStr = L"Successfully loaded local DLL: " + dllPath.wstring();
-        OutputDebugString(successStr.c_str());
+        WinMMLog(L"Successfully loaded local DLL");
     }
     return modBytes;
 }
+
 std::vector<HMEMORYMODULE> LoadInjectDlls(const std::wstring &tokenParam) {
     int argc;
     LPWSTR cmdLine = GetCommandLineW();
@@ -54,17 +77,17 @@ std::vector<HMEMORYMODULE> LoadInjectDlls(const std::wstring &tokenParam) {
         std::wstring arg = argv[i];
         if (arg == L"-mp") {
             mpEnabled = true;
-            OutputDebugString(L"-mp argument detected"); 
+            WinMMLog(L"-mp argument detected"); 
         } 
-        else if (arg.rfind(L"-token=", 0) == 0) {
+        else if (arg.starts_with(L"-token=")) {
             token = arg.substr(7);
-            OutputDebugString((L"Token found: " + token).c_str());
+            WinMMLog(L"Token found: " + token);
         }    
     }
     LocalFree(argv);
 
     if(!mpEnabled || token.empty()) {
-        OutputDebugString(L"No MP arg or token provided");
+        WinMMLog(L"No MP arg or token provided");
         return {};
     }
 
@@ -72,7 +95,7 @@ std::vector<HMEMORYMODULE> LoadInjectDlls(const std::wstring &tokenParam) {
 
     // Local injection for testing
     {
-        OutputDebugString(L"Loading local DLL for testing");
+        WinMMLog(L"Loading local DLL for testing");
         std::filesystem::path CurrentDllPath = GetCurrentDllPath(NULL);
         std::filesystem::path dllPath = CurrentDllPath.parent_path();
 
@@ -80,45 +103,54 @@ std::vector<HMEMORYMODULE> LoadInjectDlls(const std::wstring &tokenParam) {
         std::filesystem::path localDllPath = dllPath / (token + L".dll");
         modBytes = LoadLocalDll(localDllPath);
 
-
         if (modBytes.empty()) {
-            OutputDebugString(L"Failed to load local DLL");
+            WinMMLog(L"Failed to load local DLL");
             return {};
         }
     }
 
     // VPS injection
     // {
-    //     OutputDebugString(L"Attempting to downlaod from VPS");
+    //     WinMMLog(L"Attempting to download from VPS");
     //     if (!VerifyToken(token)) {
-    //         OutputDebugString(L"Invalid token");
+    //         WinMMLog(L"Invalid token");
     //         return {};
     //     }
 
     //     auto modBytes = DownloadMod(token);
     //     if (modBytes.empty()) {
-    //         OutputDebugString(L"Failed to download mod");
+    //         WinMMLog(L"Failed to download mod");
     //         return {};
     //     }
     // }
     
     // Load DLL bytes into memory using MemoryModule
+    WinMMLog(L"Loading DLL into memory...");
     HMEMORYMODULE hMod = MemoryLoadLibrary(modBytes.data(), modBytes.size());
     if (!hMod) {
         DWORD lastError = GetLastError();
-        std::wstring errorStr = L"Failed to load module. Error code: " + std::to_wstring(lastError);
-        OutputDebugString(errorStr.c_str());
+        WinMMLog(L"Failed to load module. Error code: " + std::to_wstring(lastError));
+        
+        if (lastError == ERROR_MOD_NOT_FOUND) {
+            WinMMLog(L"ERROR_MOD_NOT_FOUND: Required dependency DLL not found");
+        }
+        else if (lastError == ERROR_PROC_NOT_FOUND) {
+            WinMMLog(L"ERROR_PROC_NOT_FOUND: Required function not found in dependency");
+        }
+        else if (lastError == ERROR_DLL_INIT_FAILED) {
+            WinMMLog(L"ERROR_DLL_INIT_FAILED: DLL or dependency DllMain returned FALSE");
+        }
+        
         return {};
     }
-    OutputDebugString(L"Sucessfully loaded  DLL into memory using MemoryModule lib");
+    WinMMLog(L"Successfully loaded DLL into memory using MemoryModule");
     g_InjectDlls.push_back(hMod);
     return g_InjectDlls;
- }
-
+}
 
 void UnloadInjectDlls(const std::vector<HMEMORYMODULE>& injectDlls) {
     for (const auto& hModule : injectDlls) {
         MemoryFreeLibrary(hModule);
-        OutputDebugString(L"Unloaded DLL from memory");
+        WinMMLog(L"Unloaded DLL from memory");
     }
 }
