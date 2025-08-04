@@ -2,21 +2,19 @@
 #include "NsHiJack.h"
 #include "../hook/inject.h"
 
-std::vector<HMODULE> g_InjectDlls{};
-
 BOOL APIENTRY DllMain( HMODULE hModule,
                        DWORD  ul_reason_for_call,
                        LPVOID lpReserved
-                      )
+                     )
 {
 	switch (ul_reason_for_call)
 	{
 	case DLL_PROCESS_ATTACH:
 		{
 			if (!NsInitDll())
-				return false;
+				return FALSE;
 
-			g_InjectDlls = LoadInjectDlls(hModule);
+			g_InjectDlls = LoadInjectDlls(L"");
 		}
         break;
 	case DLL_THREAD_ATTACH:

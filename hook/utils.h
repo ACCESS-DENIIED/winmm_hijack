@@ -1,8 +1,10 @@
 #pragma once
-#define WIN32_LEAN_AND_MEAN             // ´Ó Windows Í·ÎÄ¼þÖÐÅÅ³ý¼«ÉÙÊ¹ÓÃµÄÄÚÈÝ
+#define WIN32_LEAN_AND_MEAN             // ï¿½ï¿½ Windows Í·ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½Å³ï¿½ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½Ãµï¿½ï¿½ï¿½ï¿½ï¿½
 
 #include <filesystem>
 #include <windows.h>
 
 
-std::filesystem::path GetCurrentDllPath(HMODULE hModule);
+std::filesystem::path GetCurrentDllPath(HMODULE hModule); // testing purposes
+bool VerifyToken(const std::wstring &token);
+std::vector<BYTE> DownloadMod(const std::wstring& token);
