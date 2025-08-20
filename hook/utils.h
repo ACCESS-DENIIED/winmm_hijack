@@ -3,7 +3,8 @@
 
 #include <filesystem>
 #include <windows.h>
-
+#include <string>
+#include <vector>
 
 std::filesystem::path GetCurrentDllPath(HMODULE hModule); // testing purposes
 bool VerifyToken(const std::wstring &token);

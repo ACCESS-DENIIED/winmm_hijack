@@ -40,6 +40,17 @@
 #include <stdio.h>
 #endif
 
+// Diagnostic loggers; write to winmm.log
+void MM_LogW(const wchar_t* msg);
+void MM_LogA(const char* msg);
+
+/*
+ Local Modifications for simple logging:
+ - Diagnostic logging is routed via MM_LogW/MM_LogA,
+   ultimately writing to <exe_dir>/SMT/Logs/winmm.log.
+ - No behavioral changes to MemoryModule's loader were made.
+*/
+
 #if _MSC_VER
 // Disable warning about data -> function pointer conversion
 #pragma warning(disable:4055)
@@ -518,8 +529,16 @@ HCUSTOMMODULE MemoryDefaultLoadLibrary(LPCSTR filename, void *userdata)
 {
     HMODULE result;
     UNREFERENCED_PARAMETER(userdata);
+    if (filename) {
+        MM_LogA("MemoryModule: LoadLibraryA dependency -> ");
+        MM_LogA(filename);
+    }
     result = LoadLibraryA(filename);
     if (result == NULL) {
+        DWORD err = GetLastError();
+        wchar_t buf[256];
+        wsprintfW(buf, L"MemoryModule: LoadLibraryA failed for dependency (gle=%lu)", (unsigned long)err);
+        MM_LogW(buf);
         return NULL;
     }
 
@@ -551,6 +570,11 @@ HMEMORYMODULE MemoryLoadLibraryEx(const void *data, size_t size,
     CustomFreeLibraryFunc freeLibrary,
     void *userdata)
 {
+    {
+        wchar_t buf[128];
+        wsprintfW(buf, L"MemoryModule: Enter MemoryLoadLibraryEx (size=%lu)", (unsigned long)size);
+        MM_LogW(buf);
+    }
     PMEMORYMODULE result = NULL;
     PIMAGE_DOS_HEADER dos_header;
     PIMAGE_NT_HEADERS old_header;
@@ -723,9 +747,12 @@ HMEMORYMODULE MemoryLoadLibraryEx(const void *data, size_t size,
     }
 
     // load required dlls and adjust function table of imports
+    MM_LogW(L"MemoryModule: Building import table...");
     if (!BuildImportTable(result)) {
+        MM_LogW(L"MemoryModule: BuildImportTable failed");
         goto error;
     }
+    MM_LogW(L"MemoryModule: Import table built");
 
     // mark memory pages depending on section headers and release
     // sections that are marked as "discardable"
@@ -734,19 +761,31 @@ HMEMORYMODULE MemoryLoadLibraryEx(const void *data, size_t size,
     }
 
     // TLS callbacks are executed BEFORE the main loading
+    MM_LogW(L"MemoryModule: Executing TLS callbacks...");
     if (!ExecuteTLS(result)) {
+        MM_LogW(L"MemoryModule: TLS callbacks failed");
         goto error;
     }
+    MM_LogW(L"MemoryModule: TLS callbacks finished");
 
     // get entry point of loaded library
     if (result->headers->OptionalHeader.AddressOfEntryPoint != 0) {
         if (result->isDLL) {
             DllEntryProc DllEntry = (DllEntryProc)(LPVOID)(code + result->headers->OptionalHeader.AddressOfEntryPoint);
             // notify library about attaching to process
+            MM_LogW(L"MemoryModule: Calling target DllMain(DLL_PROCESS_ATTACH)...");
+            DWORD tickBefore = GetTickCount();
             BOOL successfull = (*DllEntry)((HINSTANCE)code, DLL_PROCESS_ATTACH, 0);
+            DWORD elapsed = GetTickCount() - tickBefore;
             if (!successfull) {
+                MM_LogW(L"MemoryModule: DllMain returned FALSE");
                 SetLastError(ERROR_DLL_INIT_FAILED);
                 goto error;
+            }
+            {
+                wchar_t buf[128];
+                wsprintfW(buf, L"MemoryModule: DllMain returned TRUE (elapsed=%lums)", (unsigned long)elapsed);
+                MM_LogW(buf);
             }
             result->initialized = TRUE;
         } else {
@@ -756,6 +795,7 @@ HMEMORYMODULE MemoryLoadLibraryEx(const void *data, size_t size,
         result->exeEntry = NULL;
     }
 
+    MM_LogW(L"MemoryModule: Load successful");
     return (HMEMORYMODULE)result;
 
 error:
