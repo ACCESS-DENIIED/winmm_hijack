@@ -167,7 +167,6 @@
   <ItemGroup>
     <ClCompile Include="hook.cpp" />
     <ClCompile Include="inject.cpp" />
-    <ClCompile Include="MemoryModule.c" />
     <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>
